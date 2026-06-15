@@ -927,6 +927,42 @@ function agregarObsManual(nivel) {
 }
 
 // ─── MICRÓFONO ────────────────────────────────────────────────────────────────
+// ─── COMANDOS DE VOZ → SIGNOS DE PUNTUACIÓN ──────────────────────────────────
+function aplicarComandosVoz(texto) {
+  let t = ' ' + texto + ' ';
+  // El orden importa: primero las frases compuestas, luego las simples.
+  const reemplazos = [
+    [/\b(punto y aparte|nueva l[ií]nea|salto de l[ií]nea)\b/gi, ' \n'],
+    [/\b(punto y seguido)\b/gi, '.'],
+    [/\b(punto y coma)\b/gi, ';'],
+    [/\b(dos puntos)\b/gi, ':'],
+    [/\b(puntos suspensivos)\b/gi, '...'],
+    [/\b(abre interrogaci[oó]n|abrir interrogaci[oó]n)\b/gi, ' ¿'],
+    [/\b(cierra interrogaci[oó]n|cierre interrogaci[oó]n|signo de interrogaci[oó]n)\b/gi, '?'],
+    [/\b(abre exclamaci[oó]n|abrir exclamaci[oó]n)\b/gi, ' ¡'],
+    [/\b(cierra exclamaci[oó]n|cierre exclamaci[oó]n|signo de exclamaci[oó]n)\b/gi, '!'],
+    [/\b(abre par[eé]ntesis|abrir par[eé]ntesis)\b/gi, ' ('],
+    [/\b(cierra par[eé]ntesis|cierre par[eé]ntesis|cerrar par[eé]ntesis)\b/gi, ')'],
+    [/\b(comillas)\b/gi, '"'],
+    [/\b(gui[oó]n)\b/gi, '-'],
+    [/\b(coma)\b/gi, ','],
+    [/\b(punto)\b/gi, '.'],
+  ];
+  for (const [re, sub] of reemplazos) t = t.replace(re, sub);
+  return t;
+}
+
+// ─── LIMPIEZA DE ESPACIOS Y MAYÚSCULAS ───────────────────────────────────────
+function limpiarEspaciosPuntuacion(t) {
+  t = t.replace(/\s+([,.;:!?)])/g, '$1');          // sin espacio antes de signo de cierre
+  t = t.replace(/([¿¡(])\s+/g, '$1');               // sin espacio después de signo de apertura
+  t = t.replace(/\s*\n\s*/g, '\n');                 // limpia espacios alrededor del salto de línea
+  t = t.replace(/[ \t]{2,}/g, ' ');                 // espacios múltiples → uno solo
+  // Mayúscula al inicio y después de . ? ! o salto de línea
+  t = t.replace(/(^|[.?!]\s+|\n)([a-záéíóúñ])/g, (m, p1, p2) => p1 + p2.toUpperCase());
+  return t.trim();
+}
+
 function toggleMic(campoId, btnId) {
   if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
     mostrarToast('❌ Tu navegador no soporta reconocimiento de voz.');
@@ -949,7 +985,11 @@ function toggleMic(campoId, btnId) {
   rec.onresult = e => {
     const campo = document.getElementById(campoId);
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) campo.value += ' ' + e.results[i][0].transcript;
+      if (e.results[i].isFinal) {
+        const fragmento = aplicarComandosVoz(e.results[i][0].transcript);
+        const base = campo.value ? campo.value + ' ' + fragmento : fragmento;
+        campo.value = limpiarEspaciosPuntuacion(base);
+      }
     }
   };
   rec.onerror = () => { btn.classList.remove('grabando'); btn.textContent = '🎤'; micActivo = null; };
@@ -963,6 +1003,10 @@ function toggleMic(campoId, btnId) {
 
 // ─── GENERAR PPTX ────────────────────────────────────────────────────────────
 async function generarPPTX() {
+  const btn = document.querySelector('button[onclick*="generarPPTX"]');
+  const txtOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generando...'; }
+  try {
   const faena = document.getElementById('faena').value || 'Sin definir';
   const fecha = document.getElementById('fecha').value || '';
   const inspector = document.getElementById('inspector').value || '';
@@ -1040,7 +1084,7 @@ async function generarPPTX() {
       const row = Math.floor(i / cols);
       const xPos = 0.3 + col * (fotoW + 0.25);
       const yPos2 = 0.95 + row * (fotoH + 0.3);
-      s3.addImage({ data: `data:${foto.tipo};base64,${foto.base64}`, x: xPos, y: yPos2, w: fotoW, h: fotoH, sizing: { type: 'contain', w: fotoW, h: fotoH } });
+      s3.addImage({ data: `data:${foto.tipo || 'image/jpeg'};base64,${foto.base64}`, x: xPos, y: yPos2, w: fotoW, h: fotoH, sizing: { type: 'contain', w: fotoW, h: fotoH } });
     });
   }
 
@@ -1061,9 +1105,44 @@ async function generarPPTX() {
   s4.addText(`Verificación realizada por: ${inspector}`, { x: 0.3, y: 5.7, w: 8, h: 0.3, fontSize: 10, color: '6b7280', fontFace: 'Segoe UI' });
   s4.addText(`Documento generado: ${new Date().toLocaleDateString('es-CL')}`, { x: 8.5, y: 5.7, w: 4.5, h: 0.3, fontSize: 10, color: '6b7280', fontFace: 'Segoe UI', align: 'right' });
 
-  const nombreArchivo = `Verificacion_SSMA_${faena}_${fecha}.pptx`;
-  await pptx.writeFile({ fileName: nombreArchivo });
+  // Nombre de archivo seguro (sin caracteres inválidos para nombres de archivo)
+  const limpio = s => (s || '').replace(/[\/\\:*?"<>|]/g, '-').trim();
+  const nombreArchivo = `Verificacion_SSMA_${limpio(faena)}_${limpio(fecha)}.pptx`;
+
+  // Generamos el archivo como Blob (NO usamos writeFile, que falla en móvil/PWA)
+  const blob = await pptx.write({ outputType: 'blob' });
+  const tipoMime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+  const archivo = new File([blob], nombreArchivo, { type: tipoMime });
+
+  // 1) En móvil/PWA: menú nativo de compartir (guardar en Archivos, OneDrive, correo, etc.)
+  if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+    try {
+      await navigator.share({ files: [archivo], title: nombreArchivo, text: 'Verificación SSMA en terreno' });
+      mostrarToast('✅ PPTX listo para guardar/compartir');
+      return;
+    } catch (errShare) {
+      if (errShare && errShare.name === 'AbortError') { mostrarToast('Compartir cancelado'); return; }
+      // Si share falla por otra razón, caemos a la descarga normal de abajo
+    }
+  }
+
+  // 2) Escritorio (o si compartir no está disponible): descarga normal
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombreArchivo;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
   mostrarToast('✅ PPTX descargado correctamente');
+
+  } catch (err) {
+    console.error('Error generando PPTX:', err);
+    mostrarToast('❌ Error al generar PPTX: ' + (err && err.message ? err.message : err));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = txtOriginal; }
+  }
 }
 
 // ─── LIMPIAR ─────────────────────────────────────────────────────────────────
