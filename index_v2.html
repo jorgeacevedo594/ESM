@@ -457,46 +457,6 @@
 
 <main>
 
-  <!-- API KEY CONFIG -->
-  <div class="api-config">
-    <label>🔑 API Key Claude:</label>
-    <input type="password" id="apiKey" placeholder="sk-ant-api03-..." value="">
-    <span class="api-status" id="apiStatus">No configurada</span>
-  </div>
-
-  <!-- BASE DE CONOCIMIENTO (ADMIN) -->
-  <div class="seccion seccion-admin">
-    <div class="seccion-titulo" style="cursor:pointer;" onclick="toggleAdmin()">
-      <span>📚</span> Base de conocimiento (administración)
-      <span id="adminToggle" style="margin-left:auto; font-size:0.8rem;">▼</span>
-    </div>
-    <div id="adminBody" style="display:none;">
-      <p style="font-size:0.8rem; color:#6b7280; margin-bottom:12px;">
-        Sube aquí los procedimientos de ESM y estándares de Centinela. La IA los usará como referencia al analizar. Solo tú ves esta sección; los inspectores no.
-      </p>
-
-      <div class="kb-tipo-doc">
-        <label style="font-size:0.78rem; font-weight:600; color:#4a5568;">Tipo de documento:</label>
-        <select id="kbTipoDoc">
-          <option value="centinela">📋 Estándar Centinela (transversal — aplica a todas)</option>
-          <option value="combustible">🚛 Procedimiento — Camión Combustible</option>
-          <option value="lubricador">🔧 Procedimiento — Camión Lubricador</option>
-          <option value="petroleras">🛢️ Procedimiento — Petroleras</option>
-        </select>
-      </div>
-
-      <div class="kb-dropzone" id="kbDropzone" onclick="document.getElementById('kbFileInput').click()">
-        <span style="font-size:1.8rem;">📄</span>
-        <span>Toca para seleccionar un PDF y subirlo</span>
-        <input type="file" id="kbFileInput" accept="application/pdf" onchange="subirDocumento(event)">
-      </div>
-
-      <div class="kb-upload-status" id="kbUploadStatus"></div>
-
-      <div class="kb-lista" id="kbLista"></div>
-    </div>
-  </div>
-
   <!-- TIPO DE TRABAJO -->
   <div class="seccion">
     <div class="seccion-titulo"><span>🏗️</span> Tipo de Operación</div>
@@ -675,160 +635,8 @@ let fotosData = [];  // [{base64, nombre}] - solo fotos de detalle (van al infor
 let fotoPanoramica = null;  // foto de contexto (NO va al informe)
 let obsIdCounter = 0;
 
-// ─── BASE DE CONOCIMIENTO (FILES API) ────────────────────────────────────────
-const KB_STORAGE_KEY = 'esm_kb_documentos';
-let kbDocumentos = [];  // [{file_id, nombre, tipo}]
-
-function cargarKbDesdeStorage() {
-  try {
-    const guardado = localStorage.getItem(KB_STORAGE_KEY);
-    if (guardado) kbDocumentos = JSON.parse(guardado);
-  } catch (e) { kbDocumentos = []; }
-  renderizarKbLista();
-}
-
-function guardarKbEnStorage() {
-  try { localStorage.setItem(KB_STORAGE_KEY, JSON.stringify(kbDocumentos)); } catch (e) {}
-}
-
-function toggleAdmin() {
-  const body = document.getElementById('adminBody');
-  const toggle = document.getElementById('adminToggle');
-  if (body.style.display === 'none') {
-    body.style.display = 'block';
-    toggle.textContent = '▲';
-  } else {
-    body.style.display = 'none';
-    toggle.textContent = '▼';
-  }
-}
-
-const KB_TIPO_LABEL = {
-  centinela: { icono: '📋', nombre: 'Estándar Centinela (transversal)' },
-  combustible: { icono: '🚛', nombre: 'Procedimiento — Camión Combustible' },
-  lubricador: { icono: '🔧', nombre: 'Procedimiento — Camión Lubricador' },
-  petroleras: { icono: '🛢️', nombre: 'Procedimiento — Petroleras' }
-};
-
-async function subirDocumento(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  event.target.value = '';  // permitir resubir el mismo archivo luego
-
-  const apiKey = apiKeyInput.value.trim();
-  if (!apiKey.startsWith('sk-ant-')) {
-    setKbStatus('⚠️ Ingresa una API key válida primero.', 'error');
-    return;
-  }
-  if (file.type !== 'application/pdf') {
-    setKbStatus('⚠️ Solo se aceptan archivos PDF.', 'error');
-    return;
-  }
-
-  const tipo = document.getElementById('kbTipoDoc').value;
-  setKbStatus(`⏳ Subiendo "${file.name}"… (puede tardar unos segundos)`, 'cargando');
-
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const response = await fetch('https://api.anthropic.com/v1/files', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'files-api-2025-04-14',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: formData
-    });
-
-    const data = await response.json();
-    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-    if (!data.id) throw new Error('No se recibió un identificador de archivo.');
-
-    kbDocumentos.push({ file_id: data.id, nombre: file.name, tipo: tipo });
-    guardarKbEnStorage();
-    renderizarKbLista();
-    setKbStatus(`✅ "${file.name}" subido correctamente.`, 'ok');
-  } catch (err) {
-    console.error(err);
-    setKbStatus('❌ Error al subir: ' + err.message, 'error');
-  }
-}
-
-function setKbStatus(msg, clase) {
-  const el = document.getElementById('kbUploadStatus');
-  el.textContent = msg;
-  el.className = 'kb-upload-status ' + (clase || '');
-}
-
-function renderizarKbLista() {
-  const lista = document.getElementById('kbLista');
-  if (!lista) return;
-  if (kbDocumentos.length === 0) {
-    lista.innerHTML = '<p style="font-size:0.8rem; color:#9ca3af; text-align:center; padding:10px 0;">Aún no hay documentos cargados.</p>';
-    return;
-  }
-  lista.innerHTML = '';
-  kbDocumentos.forEach((doc, idx) => {
-    const info = KB_TIPO_LABEL[doc.tipo] || { icono: '📄', nombre: doc.tipo };
-    const div = document.createElement('div');
-    div.className = 'kb-doc-item';
-    div.innerHTML = `
-      <span class="kb-doc-icono">${info.icono}</span>
-      <div class="kb-doc-info">
-        <div class="kb-doc-nombre">${doc.nombre}</div>
-        <div class="kb-doc-tipo">${info.nombre}</div>
-      </div>
-      <button class="kb-doc-eliminar" onclick="eliminarDocumento(${idx})" title="Quitar de la lista">✕</button>
-    `;
-    lista.appendChild(div);
-  });
-}
-
-function eliminarDocumento(idx) {
-  if (!confirm('¿Quitar este documento de la base de conocimiento?')) return;
-  kbDocumentos.splice(idx, 1);
-  guardarKbEnStorage();
-  renderizarKbLista();
-}
 let micActivo = null;
 let recognitionActual = null;
-
-// API KEY
-const apiKeyInput = document.getElementById('apiKey');
-const API_KEY_STORAGE = 'esm_api_key';
-
-// Cargar API key guardada en el dispositivo (no en el código)
-try {
-  const guardada = localStorage.getItem(API_KEY_STORAGE);
-  if (guardada) apiKeyInput.value = guardada;
-} catch (e) {}
-
-function actualizarEstadoApiKey() {
-  const key = apiKeyInput.value.trim();
-  const status = document.getElementById('apiStatus');
-  if (key.startsWith('sk-ant-')) {
-    status.textContent = '✓ Configurada';
-    status.className = 'api-status ok';
-  } else if (key.length === 0) {
-    status.textContent = 'No configurada';
-    status.className = 'api-status';
-  } else {
-    status.textContent = 'Formato inválido';
-    status.className = 'api-status';
-  }
-}
-
-apiKeyInput.addEventListener('input', () => {
-  // Guardar en el dispositivo cada vez que cambia
-  try { localStorage.setItem(API_KEY_STORAGE, apiKeyInput.value.trim()); } catch (e) {}
-  actualizarEstadoApiKey();
-});
-
-// Estado inicial al cargar
-actualizarEstadoApiKey();
 
 // ─── FECHA HOY ──────────────────────────────────────────────────────────────
 document.getElementById('fecha').value = new Date().toISOString().slice(0,10);
@@ -948,12 +756,6 @@ async function analizarInspeccion() {
     return;
   }
 
-  const apiKey = apiKeyInput.value.trim();
-  if (!apiKey.startsWith('sk-ant-')) {
-    mostrarToast('⚠️ Ingresa una API key válida primero.');
-    return;
-  }
-
   btn.disabled = true;
   btn.textContent = '⏳ Analizando…';
   document.getElementById('iaLoading').classList.add('visible');
@@ -1005,13 +807,12 @@ Solo incluye lo que claramente se ve. Si no hay condiciones inseguras evidentes,
   content.push({ type: 'text', text: prompt });
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    // Llamamos a NUESTRO servidor (Cloudflare Worker), no a la IA directamente.
+    // El servidor agrega la API key escondida y reenvía a Claude.
+    const response = await fetch('https://esm-servidor.jorgeacevedo594.workers.dev/', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
@@ -1317,7 +1118,6 @@ window.addEventListener('offline', actualizarEstadoConexion);
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 actualizarEstadoConexion();
 initFotos();
-cargarKbDesdeStorage();
 </script>
 </body>
 </html>
