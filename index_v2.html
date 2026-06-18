@@ -790,10 +790,7 @@ Identifica MÁXIMO 8 observaciones EN TOTAL, ordenadas de mayor a menor importan
 - "negativa": un hallazgo, condición o acto inseguro que hay que corregir.
 - "positiva": un control que SÍ está bien aplicado (algo que se hace correctamente).
 Prioriza las más importantes. NO inventes positivas para rellenar: si no ves controles claramente bien aplicados, no incluyas ninguna positiva.
-Además, clasifica cada observación según el tipo de control de Centinela:
-- "CC" (Control Crítico): controles que previenen eventos fatales o de alto potencial de daño.
-- "C" (Control): controles de menor criticidad.
-(Esta clasificación es PROVISIONAL; el inspector la confirmará. Si no estás seguro, usa "C".)
+Además, clasifica cada observación como "C" o "CC" basándote ÚNICAMENTE en las Estrategias de Control que se te entregan en el contexto del sistema: una observación es "CC" solo si corresponde a un control marcado como crítico (CC) en esas estrategias; en cualquier otro caso es "C". Si no corresponde claramente a ningún control de las estrategias, usa "C". No reclasifiques por criterio propio. El inspector confirmará la clasificación.
 
 REGLA DE REDACCIÓN MÁS IMPORTANTE: cada observación debe ser una frase MUY BREVE y telegráfica, como las anota un prevencionista. Sujeto + acción. NO expliques, NO justifiques, NO agregues contexto.
 
@@ -836,6 +833,7 @@ Solo incluye lo que claramente se ve. Si no hay nada relevante, devuelve la list
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 1200,
+        operacion: tipoSeleccionado,
         messages: [{ role: 'user', content }]
       })
     });
