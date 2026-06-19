@@ -562,6 +562,16 @@
     </div>
   </div>
 
+  <!-- OBSERVACIONES GENERALES -->
+  <div class="seccion">
+    <div class="seccion-titulo"><span>📝</span> Observaciones Generales</div>
+    <div class="campo campo-voz" style="position:relative;">
+      <label>Observaciones de la verificación</label>
+      <textarea id="obsGenerales" rows="4" placeholder="Describa las observaciones generales de la verificación..."></textarea>
+      <button class="btn-mic" id="btnMicGeneral" onclick="toggleMic('obsGenerales', 'btnMicGeneral')" title="Dictar observaciones">🎤</button>
+    </div>
+  </div>
+
   <!-- OBSERVACIONES -->
   <div class="seccion">
     <div class="seccion-titulo"><span>⚠️</span> Observaciones Detectadas</div>
@@ -584,7 +594,7 @@
         <button type="button" id="signoConforme" class="signo-btn" onclick="setSignoManual('positiva')">🟢 Conforme (bien aplicado)</button>
       </div>
       <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
-        <button class="btn-secundario" style="padding:8px 14px; font-size:0.82rem;" onclick="agregarObsManual('C')">+ Control (C)</button>
+        <button class="btn-secundario" style="padding:8px 14px; font-size:0.82rem;" onclick="agregarObsManual('C')">+ Observación (sin marca)</button>
         <button class="btn-secundario" style="padding:8px 14px; font-size:0.82rem;" onclick="agregarObsManual('CC')">+ Control Crítico (CC)</button>
       </div>
     </div>
@@ -597,16 +607,6 @@
       <label>Medidas correctivas</label>
       <textarea id="medidasCorrectivas" rows="4" placeholder="Liste las medidas correctivas aplicadas..."></textarea>
       <button class="btn-mic" id="btnMicMedidas" onclick="toggleMic('medidasCorrectivas', 'btnMicMedidas')" title="Dictar medidas">🎤</button>
-    </div>
-  </div>
-
-  <!-- OBSERVACIONES GENERALES -->
-  <div class="seccion">
-    <div class="seccion-titulo"><span>📝</span> Observaciones Generales</div>
-    <div class="campo campo-voz" style="position:relative;">
-      <label>Observaciones de la verificación</label>
-      <textarea id="obsGenerales" rows="4" placeholder="Describa las observaciones generales de la verificación..."></textarea>
-      <button class="btn-mic" id="btnMicGeneral" onclick="toggleMic('obsGenerales', 'btnMicGeneral')" title="Dictar observaciones">🎤</button>
     </div>
   </div>
 
@@ -786,11 +786,17 @@ ${fotoPanoramica ? 'La PRIMERA imagen es una vista PANORÁMICA de contexto gener
 
 ${foco ? `FOCO DE LA INSPECCIÓN (prioriza especialmente esto): ${foco}` : ''}
 
-Identifica MÁXIMO 8 observaciones EN TOTAL, ordenadas de mayor a menor importancia. Cada observación es de un tipo:
-- "negativa": un hallazgo, condición o acto inseguro que hay que corregir.
-- "positiva": un control que SÍ está bien aplicado (algo que se hace correctamente).
-Prioriza las más importantes. NO inventes positivas para rellenar: si no ves controles claramente bien aplicados, no incluyas ninguna positiva.
-Además, clasifica cada observación como "C" o "CC" basándote ÚNICAMENTE en las Estrategias de Control que se te entregan en el contexto del sistema: una observación es "CC" solo si corresponde a un control marcado como crítico (CC) en esas estrategias; en cualquier otro caso es "C". Si no corresponde claramente a ningún control de las estrategias, usa "C". No reclasifiques por criterio propio. El inspector confirmará la clasificación.
+Identifica hasta 10 observaciones EN TOTAL, ordenadas de mayor a menor importancia. Para cada observación define dos cosas:
+
+1) "clas":
+   - "CC" SOLO si corresponde a un control marcado como crítico (CC) en las ESTRATEGIAS DE CONTROL del contexto del sistema.
+   - "C" en TODOS los demás casos: observaciones de otros controles de las Estrategias, y especialmente el cumplimiento (o incumplimiento) de los PASOS de los Procedimientos ESM de la operación y de los requisitos de los Estándares/Reglamentos Centinela. No reclasifiques por criterio propio.
+
+2) "tipo":
+   - "negativa": una desviación, hallazgo o paso/requisito no cumplido (a corregir).
+   - "positiva": un control crítico, paso o requisito que SÍ está bien aplicado.
+
+MUY IMPORTANTE: no te limites a los controles críticos. Revisa también activamente si la escena cumple los PASOS del procedimiento de la operación y los requisitos de los estándares Centinela, y repórtalo como observaciones "C" (con su "ref"). NO inventes positivas para rellenar: si no ves algo claramente bien aplicado, no lo incluyas.
 
 REGLA DE REDACCIÓN MÁS IMPORTANTE: cada observación debe ser una frase MUY BREVE y telegráfica, como las anota un prevencionista. Sujeto + acción. NO expliques, NO justifiques, NO agregues contexto.
 
@@ -808,7 +814,7 @@ Ejemplos del estilo EXACTO (positivas):
 En el campo "ref" pon brevemente el procedimiento o estándar relacionado (esto se mostrará solo si el usuario lo pide, aparte del hallazgo).
 
 Responde SOLO en JSON, sin markdown:
-{"observaciones":[{"tipo":"negativa","clas":"CC","texto":"Frase breve.","ref":"estándar relacionado"}]}
+{"observaciones":[{"clas":"CC","tipo":"negativa","texto":"Frase breve.","ref":"procedimiento o estándar relacionado"}]}
 
 Solo incluye lo que claramente se ve. Si no hay nada relevante, devuelve la lista vacía.`;
 
@@ -894,7 +900,6 @@ function renderizarObs() {
     const div = document.createElement('div');
     div.className = 'obs-item';
     div.id = `obs${obs.id}`;
-    const clasLabel = obs.clas === 'CC' ? 'CC · Control Crítico' : 'C · Control';
     const fuente = obs.fuente === 'ia' ? '<div class="obs-fuente-ia">✨ Detectado por IA</div>' : '<div class="obs-fuente-inspector">👤 Agregado por inspector</div>';
 
     // Botón "Ver referencia": activo si hay ref; si no, muestra mensaje de que se activa al cargar documentos
@@ -909,8 +914,22 @@ function renderizarObs() {
       }
     }
 
+    // Solo los Controles Críticos (CC) se marcan: rojo suave (a corregir) o verde suave (cumplido).
+    // Todo lo demás (Estrategias no-CC, Centinela, Procedimientos ESM) va sin etiqueta ni color.
+    let badgeHtml = '';
+    if (obs.clas === 'CC') {
+      const pos = obs.signo === 'positiva';
+      const bg = pos ? 'var(--verde-claro)' : 'var(--rojo-claro)';
+      const bd = pos ? 'var(--verde)' : 'var(--rojo)';
+      const tx = pos ? '#166534' : '#a02620';
+      const label = pos ? '🟢 Control Crítico (cumplido)' : '🔴 Control Crítico';
+      div.style.background = bg;
+      div.style.borderLeft = `4px solid ${bd}`;
+      badgeHtml = `<span class="obs-badge" onclick="toggleSignoObs(${obs.id})" style="cursor:pointer; background:#fff; color:${tx}; border:1px solid ${bd};" title="Clic para cambiar entre 'cumplido' (verde) y 'a corregir' (rojo)">${label}</span>`;
+    }
+
     div.innerHTML = `
-      <span class="obs-badge" onclick="toggleClasObs(${obs.id})" style="cursor:pointer; background:${colorBadgeObs(obs)}; color:#fff;" title="Clic para cambiar entre Control (C) y Control Crítico (CC)">${clasLabel}</span>
+      ${badgeHtml}
       <div class="obs-texto">${obs.texto}${fuente}${refHtml}</div>
       <button class="obs-eliminar" onclick="eliminarObs(${obs.id})" title="Eliminar">✕</button>
     `;
@@ -932,6 +951,13 @@ function toggleClasObs(id) {
   const o = observaciones.find(x => x.id === id);
   if (!o) return;
   o.clas = (o.clas === 'CC') ? 'C' : 'CC';
+  renderizarObs();
+}
+
+function toggleSignoObs(id) {
+  const o = observaciones.find(x => x.id === id);
+  if (!o) return;
+  o.signo = (o.signo === 'positiva') ? 'negativa' : 'positiva';
   renderizarObs();
 }
 
@@ -1086,8 +1112,13 @@ async function generarPPTX() {
     const lCell = (t, opt = {}) => ({ text: t, options: Object.assign({ fill: { color: GRIS }, bold: true, valign: 'middle' }, opt) });
     const vCell = (t, opt = {}) => ({ text: t, options: Object.assign({ fill: { color: GRIS }, valign: 'middle' }, opt) });
 
-    const colorPptxObs = (o) => o.signo === 'positiva' ? (o.clas === 'CC' ? '14622B' : '2E8B47') : (o.clas === 'CC' ? '8E1B12' : 'CC3333');
-    const condText = observaciones.map(o => ({ text: `(${o.clas}) ${o.texto}`, options: { bullet: { code: '2022' }, color: colorPptxObs(o), bold: o.clas === 'CC', breakLine: true } }));
+    const condText = observaciones.map(o => {
+      if (o.clas === 'CC') {
+        const col = o.signo === 'positiva' ? '166534' : 'C0392B';
+        return { text: o.texto, options: { bullet: { code: '2022' }, color: col, bold: true, breakLine: true } };
+      }
+      return { text: o.texto, options: { bullet: { code: '2022' }, color: '333333', breakLine: true } };
+    });
     const medLines = medidasCorrectivas.split('\n').filter(x => x.trim());
     const medText = medLines.length ? medLines.map(m => ({ text: m, options: { bullet: { code: '2022' }, breakLine: true } })) : [{ text: '' }];
     const condFinal = condText.length ? condText : [{ text: 'Sin condiciones inseguras detectadas.' }];
