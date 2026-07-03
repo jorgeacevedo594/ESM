@@ -1,4 +1,4 @@
-const CACHE = 'ssma-esm-v1';
+const CACHE = 'ssma-esm-v2';
 const FILES = [
   './',
   './index.html',
